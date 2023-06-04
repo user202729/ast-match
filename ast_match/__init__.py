@@ -1,11 +1,16 @@
 """
 Main module.
+
+Pattern syntax
+--------------
+
+Refer to :func:`compile`.
 """
 
 from __future__ import annotations
 
 import ast
-from ast_match.pattern import *
+from ast_match._pattern import *
 from copy import deepcopy
 from typing import Union, Iterator, Callable, Optional
 
@@ -18,6 +23,19 @@ def stmt(code: str)->ast.stmt:
 		>>> pp(stmt('for i in range(5): print(i)'))
 		<ast.AST: for i in range(5):
 		    print(i)>
+
+	Note that the resulting code must be a single statement::
+
+		>>> pp(stmt('a=1; b=2'))
+		Traceback (most recent call last):
+			...
+		AssertionError
+
+	If you want to parse multiple statements, consider using ``ast.parse`` directly::
+
+		>>> pp(ast.parse('a=1; b=2'))
+		<ast.AST: a = 1
+		b = 2>
 	"""
 	body=ast.parse(code).body
 	assert len(body)==1
@@ -42,6 +60,9 @@ def expr(code: str)->ast.expr:
 def prettyrepr(o: ast.AST|list)->str:
 	"""
 	Pretty print an ``ast.AST`` object. Return a string.
+
+	This function is mainly for internal pytest doctesting only.
+
 	The output should not be considered stable.
 
 	Example::
@@ -51,8 +72,11 @@ def prettyrepr(o: ast.AST|list)->str:
 	"""
 	if isinstance(o, list):
 		return "[" + ", ".join(prettyrepr(x) for x in o) + "]"
-	try: return "<ast.AST: " + ast.unparse(o) + ">"
-	except: return "<ast.AST: " + ast.dump(o, indent=2) + ">"
+	if isinstance(o, ast.AST):
+		try: return "<ast.AST: " + ast.unparse(o) + ">"
+		except: return "<ast.AST: " + ast.dump(o, indent=2) + ">"
+	else:
+		return repr(o)
 
 @dataclass
 class _Prettyprint:
@@ -62,6 +86,7 @@ class _Prettyprint:
 def pp(o: ast.AST)->_Prettyprint:
 	"""
 	Pretty print an ``ast.AST`` object (by returning an object whose repr is the specified string).
+
 	This function is mainly for internal pytest doctesting only.
 
 	The output should not be considered stable.
@@ -81,6 +106,8 @@ _privateconstructonly=_Privateconstructonly()
 class Repl:
 	"""
 	Second argument to :meth:`Pattern.sub` and similar methods.
+
+	Refer to :func:`repl` on how to construct this class.
 	"""
 	_pattern: Pattern0
 
@@ -118,7 +145,7 @@ class Match:
 	"""
 	Return type of functions such as :meth:`Pattern.fullmatch`.
 	"""
-	matching: Matching0
+	_matching: Matching0
 
 	def __init__(self, *args, **kwargs):
 		"""
@@ -131,10 +158,10 @@ class Match:
 		"""
 		if len(args)==1 and not kwargs:
 			assert isinstance(args[0], dict)
-			self.matching=args[0]
+			self._matching=args[0]
 		else:
 			assert not args
-			self.matching=dict(**kwargs)
+			self._matching=dict(**kwargs)
 
 	def __repr__(self):
 		"""
@@ -142,7 +169,7 @@ class Match:
 		Match{'a': <ast.AST: 1>}
 		"""
 		return "Match{" + ", ".join(
-				f"{key!r}: {prettyrepr(value)}" for key, value in self.matching.items()
+				f"{key!r}: {prettyrepr(value)}" for key, value in self._matching.items()
 				) + "}"
 	
 	def expand(self, o: Repl)->ast.AST:
@@ -169,21 +196,21 @@ class Match:
 
 		"""
 		return pattern_replace_mutable(
-				deepcopy(o._pattern), self.matching)
+				deepcopy(o._pattern), self._matching)
 
 	def __getitem__(self, key: str)->ast.AST|list:
 		"""
 		>>> pp(Match(a=expr("1"))["a"])
 		<ast.AST: 1>
 		"""
-		return self.matching[key]
+		return self._matching[key]
 
 	def group(self, key: str)->ast.AST|list:
 		"""
 		>>> pp(Match(a=expr("1")).group("a"))
 		<ast.AST: 1>
 		"""
-		return self.matching[key]
+		return self._matching[key]
 
 @dataclass
 class Pattern:
@@ -299,7 +326,8 @@ def compile(node: ast.AST)->Pattern:
 
 		>>> compile(expr("f(_a)")).fullmatch(expr("f(1)"))
 		Match{'a': <ast.AST: 1>}
-		>>> compile(expr("f(_a)")).fullmatch(expr("f(1, 2)"))
+		>>> compile(expr("f(_a)")).fullmatch(expr("f(1, 2)")) is None
+		True
 
 	A ``BlankNullSequence`` can match zero or more items::
 
@@ -312,8 +340,11 @@ def compile(node: ast.AST)->Pattern:
 
 	Similarly:
 
-		>>> compile(stmt("for i in range(10): _a")).fullmatch(stmt("for i in range(10): 1; 2"))
-		>>> compile(stmt("for i in range(10): __a")).fullmatch(stmt("for i in range(10): 1; 2"))
+		>>> pattern=compile(stmt("for i in range(10): _a"))
+		>>> pattern.fullmatch(stmt("for i in range(10): 1; 2")) is None
+		True
+		>>> pattern=compile(stmt("for i in range(10): __a"))
+		>>> pattern.fullmatch(stmt("for i in range(10): 1; 2"))
 		Match{'a': [<ast.AST: 1>, <ast.AST: 2>]}
 	"""
 	node=deepcopy(node)
