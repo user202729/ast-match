@@ -12,6 +12,7 @@ Import everything (apart from testing purpose it's recommended to avoid `import 
 
 ```python
 >>> from ast_match import *
+>>> from pprint import pprint
 
 ```
 
@@ -97,8 +98,10 @@ Matching{'last': <ast.AST: 7 * 8>}
 <td>
 
 ```python
->>> [*re.compile(r"(?P<a>\d+)\*(?P<b>\d+)").finditer("1*2+3*4")]
-[<re.Match object; span=(0, 3), match='1*2'>, <re.Match object; span=(4, 7), match='3*4'>]
+>>> pattern=re.compile(r"(?P<a>\d+)\*(?P<b>\d+)")
+>>> pprint([*pattern.finditer("1*2+3*4")])
+[<re.Match object; span=(0, 3), match='1*2'>,
+ <re.Match object; span=(4, 7), match='3*4'>]
 
 ```
 
@@ -106,8 +109,10 @@ Matching{'last': <ast.AST: 7 * 8>}
 <td> 
 
 ```python
->>> [*compile(expr("_a*_b")).finditer(expr("1*2+3*4"))]
-[Matching{'a': <ast.AST: 1>, 'b': <ast.AST: 2>}, Matching{'a': <ast.AST: 3>, 'b': <ast.AST: 4>}]
+>>> pattern=compile(expr("_a*_b"))
+>>> pprint([*pattern.finditer(expr("1*2+3*4"))])
+[Matching{'a': <ast.AST: 1>, 'b': <ast.AST: 2>},
+ Matching{'a': <ast.AST: 3>, 'b': <ast.AST: 4>}]
 
 ```
 
