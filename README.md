@@ -11,7 +11,8 @@ For manipulating the internal structure, it's recommended to read through https:
 Import everything (apart from testing purpose it's recommended to avoid `import *`):
 
 ```python
-from ast_match import *
+>>> from ast_match import *
+
 ```
 
 First, note that Python distinguishes between statement and expression, so you need to specify the type explicitly:
@@ -22,15 +23,30 @@ Traceback (most recent call last):
     ...
 AssertionError
 
->>> stmt("a=1")
-<a = 1>
-Assign(
-  targets=[
-    Name(id='a', ctx=Store())],
-  value=Constant(value=1))
+>>> pp(stmt("a=1"))
+<ast.AST: a = 1>
+
 ```
 
+Here the `pp` function used to "pretty-print" the resulting `ast.AST` object. If you use IPython you may want to refer to the section below for automatic pretty-printing.
+
 The API somewhat resemble `re` module API:
+
+<table>
+<tr>
+<th>
+
+`re` module
+
+</th>
+<th>
+
+`ast_match` module
+
+</th>
+</tr>
+<tr>
+<td>
 
 ```python
 >>> import re
@@ -39,32 +55,65 @@ The API somewhat resemble `re` module API:
 >>> match.groupdict()
 {'last': '7*8'}
 
->>> pattern=to_pattern_mutable(parse_expr("_last-1"))
->>> match=pattern_match(pattern, parse_expr("7*8-1"))
->>> match
-{'last': <7 * 8>
-BinOp(
-  left=Constant(value=7),
-  op=Mult(),
-  right=Constant(value=8))}
 ```
 
-There's no direct analog for `re.search` or `re.sub`, but there's support for limited replacement:
+</td>
+<td> 
 
 ```python
->>> pattern=to_pattern_mutable(parse_expr("_last-1"))
->>> pattern_replace_mutable(pattern, {"last": parse_expr("a*b")})
-<a * b - 1>
-BinOp(
-  left=BinOp(
-    left=Name(id='a', ctx=Load()),
-    op=Mult(),
-    right=Name(id='b', ctx=Load())),
-  op=Sub(),
-  right=Constant(value=1))
+>>> from ast_match import *
+>>> pattern=compile(expr("_last-1"))
+>>> match=pattern.fullmatch(expr("7*8-1"))
+>>> match
+Matching{'last': <ast.AST: 7 * 8>}
+
 ```
 
+</td>
+</tr>
+<tr>
+<td>
 
+```python
+>>> pattern=re.compile(r"(?P<x>\d+)\*(?P<y>\d+)")
+>>> pattern.sub(r"\g<y>*\g<x>", "1*2+3*4")
+'2*1+4*3'
+
+```
+
+</td>
+<td> 
+
+```python
+>>> pattern=compile(expr("_x * _y"))
+>>> pp(pattern.sub(repl(expr("_y*_x")), expr("1*2+3*4")))
+<ast.AST: 2 * 1 + 4 * 3>
+
+```
+
+</td>
+</tr>
+<tr>
+<td>
+
+```python
+>>> [*re.compile(r"(?P<a>\d+)\*(?P<b>\d+)").finditer("1*2+3*4")]
+[<re.Match object; span=(0, 3), match='1*2'>, <re.Match object; span=(4, 7), match='3*4'>]
+
+```
+
+</td>
+<td> 
+
+```python
+>>> [*compile(expr("_a*_b")).finditer(expr("1*2+3*4"))]
+[Matching{'a': <ast.AST: 1>, 'b': <ast.AST: 2>}, Matching{'a': <ast.AST: 3>, 'b': <ast.AST: 4>}]
+
+```
+
+</td>
+</tr>
+</table>
 
 ### Note for Vim users
 

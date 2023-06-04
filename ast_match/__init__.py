@@ -4,6 +4,7 @@ Main module.
 
 from __future__ import annotations
 
+import ast
 from ast_match.parse import parse_statement, parse_expr
 from ast_match.pattern import *
 from copy import deepcopy
@@ -71,6 +72,32 @@ def pp(o: ast.AST)->_Prettyprint:
 	"""
 	return _Prettyprint(prettyrepr(o))
 
+class _Privateconstructonly: pass
+
+_privateconstructonly=_Privateconstructonly()
+
+@dataclass
+class Repl:
+	"""
+	Second argument to :meth:`Pattern.sub` and similar methods.
+	"""
+	_pattern: Pattern0
+
+	def __init__(self, o: _Privateconstructonly, pattern: Pattern0)->None:
+		if o is not _privateconstructonly: raise TypeError("Repl is not constructible directly, use repl() instead")
+		self._pattern=pattern
+
+	def __repr__(self)->str:
+		return "<Repl: " + ast.dump(self._pattern, indent=2) + ">"
+
+
+def repl(node: ast.AST)->Repl:
+	"""
+	Construct a :class:`Repl` object.
+	"""
+	node=deepcopy(node)
+	return Repl(_privateconstructonly, to_pattern_mutable(node))
+
 @dataclass
 class Matching:
 	"""
@@ -103,23 +130,40 @@ class Matching:
 				f"{key!r}: {prettyrepr(value)}" for key, value in self.matching.items()
 				) + "}"
 	
-	def expand(self, o: Pattern)->ast.AST:
+	def expand(self, o: Repl)->ast.AST:
 		"""
 		Substitute the matched values into the pattern, and return the result.
 
 		Example::
 
-			>>> m=Matching({"a": expr("b")})
+			>>> m=Matching(a=expr("b"))
 			>>> m
 			Matching{'a': <ast.AST: b>}
-			>>> pp(m.expand(compile(stmt('_a=1'))))
+			>>> pp(m.expand(repl(stmt('_a=1'))))
 			<ast.AST: b = 1>
+
+		As they're ``ast.AST`` objects, nestings etc. are properly handled::
+
+			>>> pp(Matching(a=expr("1*2"), b=expr("3*4")).expand(repl(expr("_a+_b"))))
+			<ast.AST: 1 * 2 + 3 * 4>
+			>>> pp(Matching(a=expr("1+2"), b=expr("3+4")).expand(repl(expr("_a*_b"))))
+			<ast.AST: (1 + 2) * (3 + 4)>
+			>>> pp(Matching(body=stmt("print(i)")).expand(repl(stmt("for i in range(n): _body"))))
+			<ast.AST: for i in range(n):
+			    print(i)>
+
 		"""
-		return o.sub_placeholder(self)
+		return pattern_replace_mutable(
+				deepcopy(o._pattern), self.matching)
+
 
 @dataclass
 class Pattern:
 	pattern: Pattern0
+
+	def __init__(self, o: _Privateconstructonly, pattern: Pattern0)->None:
+		if o is not _privateconstructonly: raise TypeError("Pattern is not constructible directly, use compile() instead")
+		self._pattern=pattern
 
 	def fullmatch(self, text: ast.AST)->Optional[Matching]:
 		r"""
@@ -128,26 +172,9 @@ class Pattern:
 			>>> compile(expr("_last-1")).fullmatch(expr("7*8-1"))
 			Matching{'last': <ast.AST: 7 * 8>}
 		"""
-		match=pattern_match(self.pattern, text)
+		match=pattern_match(self._pattern, text)
 		if match is None: return None
 		return Matching(match)
-
-	def sub_placeholder(self, replacement: Matching)->ast.AST:
-		r"""
-		Replace the placeholders in this pattern according to *replacement*::
-
-			>>> pp(compile(expr("_a+_b")).sub_placeholder(Matching({"a": expr("1*2"), "b": expr("3*4")})))
-			<ast.AST: 1 * 2 + 3 * 4>
-			>>> pp(compile(expr("_a*_b")).sub_placeholder(Matching({"a": expr("1+2"), "b": expr("3+4")})))
-			<ast.AST: (1 + 2) * (3 + 4)>
-			>>> pp(compile(stmt("for i in range(n): _body")).sub_placeholder(Matching({"body": stmt("print(i)")})))
-			<ast.AST: for i in range(n):
-			    print(i)>
-
-		May not be stable.
-		"""
-		return pattern_replace_mutable(
-				deepcopy(self.pattern), replacement.matching)
 
 	def finditer(self, text: ast.AST)->Iterator[Matching]:
 		"""
@@ -176,7 +203,7 @@ class Pattern:
 		else:
 			assert False, (self, text)
 
-	def sub(self, replace: Union[ast.AST, Pattern, Callable[[ast.AST, Matching], ast.AST]], text: ast.AST)->ast.AST:
+	def sub(self, replace: Union[ast.AST, Repl, Callable[[ast.AST, Matching], ast.AST]], text: ast.AST)->ast.AST:
 		"""
 		Replace all occurrences.
 
@@ -188,23 +215,24 @@ class Pattern:
 
 			>>> pp(compile(expr("1")).sub(expr("2"), expr("1+5+7+1")))
 			<ast.AST: 2 + 5 + 7 + 2>
-			>>> pp(compile(expr("1")).sub(lambda whole, _matching: compile(expr("f(_x)")).sub_placeholder(Matching(x=whole)), expr("1+5+7+1")))
+			>>> pp(compile(expr("1")).sub(lambda whole, _matching: Matching(x=whole).expand(repl(expr("f(_x)"))), expr("1+5+7+1")))
 			<ast.AST: f(1) + 5 + 7 + f(1)>
-			>>> pp(compile(expr("_x*_y")).sub(compile(expr("_y*_x")), expr("2*3+4*5")))
+			>>> pp(compile(expr("_x*_y")).sub(repl(expr("_y*_x")), expr("2*3+4*5")))
 			<ast.AST: 3 * 2 + 5 * 4>
 		"""
-		if isinstance(text, list):
-			return [self.sub(replace, item) for item in text]
+		#if isinstance(text, list):
+		#	return [self.sub(replace, item) for item in text]
 
-		elif isinstance(text, ast.AST):
+		if isinstance(text, ast.AST):
 			# check top level match
 			matching=self.fullmatch(text)
 			if matching is not None:
 				if isinstance(replace, ast.AST):
 					return replace
-				elif isinstance(replace, Pattern):
-					return replace.sub_placeholder(matching)
+				elif isinstance(replace, Repl):
+					return matching.expand(replace)
 				else:
+					assert callable(replace)
 					return replace(text, matching)
 
 			# check children
@@ -214,8 +242,11 @@ class Pattern:
 
 			return text
 
+		else:
+			assert False
+
 	def __repr__(self)->str:
-		return "<Pattern: " + ast.dump(self.pattern, indent=2) + ">"
+		return "<Pattern: " + ast.dump(self._pattern, indent=2) + ">"
 
 
 def compile(node: ast.AST)->Pattern:
@@ -233,5 +264,5 @@ def compile(node: ast.AST)->Pattern:
 		<Pattern: BinOp(left=Blank(var='a'), op=Add(), right=Blank(var='b'))>
 	"""
 	node=deepcopy(node)
-	return Pattern(to_pattern_mutable(node))
+	return Pattern(_privateconstructonly, to_pattern_mutable(node))
 
