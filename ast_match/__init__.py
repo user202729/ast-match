@@ -95,6 +95,20 @@ class Repl:
 def repl(node: ast.AST)->Repl:
 	"""
 	Construct a :class:`Repl` object.
+
+	Used as the first argument of :meth:`Pattern.sub` and similar methods.
+
+	The syntax is similar to, but not the same as, :func:`compile`.
+
+	For example::
+
+		>>> pp(compile(stmt('_a=1')).sub(repl(stmt('_a=2')), stmt('b=1')))
+		<ast.AST: b = 2>
+
+	Similar to :func:`compile`, you can also use ``BlankNullSequence``::
+
+		>>> pp(compile(stmt('f(__a)*g(__b)')).sub(repl(stmt('h(__a, 0, __b)')), stmt('f(1, 2)*g(3, 4)')))
+		<ast.AST: h(1, 2, 0, 3, 4)>
 	"""
 	node=deepcopy(node)
 	return Repl(_privateconstructonly, to_pattern_mutable(node))

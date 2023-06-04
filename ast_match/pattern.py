@@ -86,12 +86,6 @@ def scan_node_to_pattern(node: ast.AST)->None:
 				else:
 					scan_node_to_pattern(x)
 
-			if len(child)==1 and isinstance(child[0], BlankNullSequence):
-				setattr(node, field_name, child[0])
-
-			elif any(isinstance(x, BlankNullSequence) for x in child):
-				raise NotImplementedError(f"BlankNullSequence together with another item is not implemented -- {child=}")
-
 		elif isinstance(child, ast.AST):
 			tmp=node_to_blank_or_verbatim_mut(child)
 			if tmp is not None:
@@ -119,16 +113,23 @@ def merge_matching(a: Optional[Matching0], b: Optional[Matching0])->Optional[Mat
 	return a
 
 def pattern_match(pattern: Pattern0|list, tree: ast.AST|list)->Optional[Matching0]:
-	if isinstance(pattern, Blank) or isinstance(pattern, BlankNullSequence):
-		if isinstance(pattern, Blank): assert not isinstance(tree, list)
-		elif isinstance(pattern, BlankNullSequence): assert isinstance(tree, list)
+	if isinstance(pattern, Blank):
+		assert not isinstance(tree, list)
 		return {pattern.var: tree}
+	
 	if type(pattern)!=type(tree): return None
 
 	result: Optional[Matching0]={}
 
 	if isinstance(pattern, list):
 		assert isinstance(tree, list)
+
+		if any(isinstance(x, BlankNullSequence) for x in pattern):
+			if len(pattern)==1:
+				return {pattern[0].var: tree}
+			else:
+				raise NotImplementedError
+
 		if len(pattern)!=len(tree): return None
 		for pattern0, tree0 in zip(pattern, tree):
 			result=merge_matching(result, pattern_match(pattern0, tree0))
@@ -152,14 +153,21 @@ def pattern_replace_mutable(pattern: Any, replacement: Matching0)->Any:
 
 	note. For convenience, result might not be ast.AST if the input is not
 	"""
-	if isinstance(pattern, Blank) or isinstance(pattern, BlankNullSequence):
+	if isinstance(pattern, Blank):
 		result=replacement[pattern.var]
-		if isinstance(pattern, Blank): assert not isinstance(result, list)
-		elif isinstance(pattern, BlankNullSequence): assert isinstance(result, list)
+		assert not isinstance(result, list)
 		return result
 
+
 	elif isinstance(pattern, list):
-		return [pattern_replace_mutable(item, replacement) for item in pattern]  # type: ignore
+		result=[]
+		for item in pattern:
+			if isinstance(item, BlankNullSequence):
+				assert isinstance(replacement[item.var], list)
+				result+=replacement[item.var]
+			else:
+				result.append(pattern_replace_mutable(item, replacement))
+		return result
 
 	elif isinstance(pattern, ast.AST):
 		for field_name, pattern0 in ast.iter_fields(pattern):

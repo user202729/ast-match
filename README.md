@@ -6,6 +6,17 @@ This library allows you to write the syntax in an intuitive way, instead of havi
 
 For manipulating the internal structure, it's recommended to read through https://docs.python.org/3/library/ast.html to know what kind of nodes may appear in an AST.
 
+It's recommended to read through these at least once (as well as linked documentations at the bottom of the page) at least once,
+it will save you lots of time later on.
+
+### Limitations
+
+This module does not allow you to manipulate the tree in *all possible* ways. For that you still need to tinker with the AST itself.
+
+### Related packages
+
+https://greentreesnakes.readthedocs.io/en/latest/examples.html#real-projects
+
 ### Usage
 
 Import everything (apart from testing purpose it's recommended to avoid `import *`):
@@ -66,7 +77,7 @@ The API somewhat resemble `re` module API:
 >>> pattern=compile(expr("_last-1"))
 >>> match=pattern.fullmatch(expr("7*8-1"))
 >>> match
-Matching{'last': <ast.AST: 7 * 8>}
+Match{'last': <ast.AST: 7 * 8>}
 
 ```
 
@@ -111,8 +122,8 @@ Matching{'last': <ast.AST: 7 * 8>}
 ```python
 >>> pattern=compile(expr("_a*_b"))
 >>> pprint([*pattern.finditer(expr("1*2+3*4"))])
-[Matching{'a': <ast.AST: 1>, 'b': <ast.AST: 2>},
- Matching{'a': <ast.AST: 3>, 'b': <ast.AST: 4>}]
+[Match{'a': <ast.AST: 1>, 'b': <ast.AST: 2>},
+ Match{'a': <ast.AST: 3>, 'b': <ast.AST: 4>}]
 
 ```
 
