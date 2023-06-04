@@ -100,7 +100,7 @@ def repl(node: ast.AST)->Repl:
 	return Repl(_privateconstructonly, to_pattern_mutable(node))
 
 @dataclass
-class Matching:
+class Match:
 	"""
 	Return type of functions such as :meth:`Pattern.fullmatch`.
 	"""
@@ -110,10 +110,10 @@ class Matching:
 		"""
 		Constructor. Example::
 
-			>>> Matching({"a": expr("1")})
-			Matching{'a': <ast.AST: 1>}
-			>>> Matching(a=expr("1"))
-			Matching{'a': <ast.AST: 1>}
+			>>> Match({"a": expr("1")})
+			Match{'a': <ast.AST: 1>}
+			>>> Match(a=expr("1"))
+			Match{'a': <ast.AST: 1>}
 		"""
 		if len(args)==1 and not kwargs:
 			assert isinstance(args[0], dict)
@@ -124,10 +124,10 @@ class Matching:
 
 	def __repr__(self):
 		"""
-		>>> Matching({"a": expr("1")})
-		Matching{'a': <ast.AST: 1>}
+		>>> Match({"a": expr("1")})
+		Match{'a': <ast.AST: 1>}
 		"""
-		return "Matching{" + ", ".join(
+		return "Match{" + ", ".join(
 				f"{key!r}: {prettyrepr(value)}" for key, value in self.matching.items()
 				) + "}"
 	
@@ -137,19 +137,19 @@ class Matching:
 
 		Example::
 
-			>>> m=Matching(a=expr("b"))
+			>>> m=Match(a=expr("b"))
 			>>> m
-			Matching{'a': <ast.AST: b>}
+			Match{'a': <ast.AST: b>}
 			>>> pp(m.expand(repl(stmt('_a=1'))))
 			<ast.AST: b = 1>
 
 		As they're ``ast.AST`` objects, nestings etc. are properly handled::
 
-			>>> pp(Matching(a=expr("1*2"), b=expr("3*4")).expand(repl(expr("_a+_b"))))
+			>>> pp(Match(a=expr("1*2"), b=expr("3*4")).expand(repl(expr("_a+_b"))))
 			<ast.AST: 1 * 2 + 3 * 4>
-			>>> pp(Matching(a=expr("1+2"), b=expr("3+4")).expand(repl(expr("_a*_b"))))
+			>>> pp(Match(a=expr("1+2"), b=expr("3+4")).expand(repl(expr("_a*_b"))))
 			<ast.AST: (1 + 2) * (3 + 4)>
-			>>> pp(Matching(body=stmt("print(i)")).expand(repl(stmt("for i in range(n): _body"))))
+			>>> pp(Match(body=stmt("print(i)")).expand(repl(stmt("for i in range(n): _body"))))
 			<ast.AST: for i in range(n):
 			    print(i)>
 
@@ -157,6 +157,19 @@ class Matching:
 		return pattern_replace_mutable(
 				deepcopy(o._pattern), self.matching)
 
+	def __getitem__(self, key: str)->ast.AST|list:
+		"""
+		>>> pp(Match(a=expr("1"))["a"])
+		<ast.AST: 1>
+		"""
+		return self.matching[key]
+
+	def group(self, key: str)->ast.AST|list:
+		"""
+		>>> pp(Match(a=expr("1")).group("a"))
+		<ast.AST: 1>
+		"""
+		return self.matching[key]
 
 @dataclass
 class Pattern:
@@ -166,25 +179,25 @@ class Pattern:
 		if o is not _privateconstructonly: raise TypeError("Pattern is not constructible directly, use compile() instead")
 		self._pattern=pattern
 
-	def fullmatch(self, text: ast.AST)->Optional[Matching]:
+	def fullmatch(self, text: ast.AST)->Optional[Match]:
 		r"""
 		Match this pattern against the provided text::
 
 			>>> compile(expr("_last-1")).fullmatch(expr("7*8-1"))
-			Matching{'last': <ast.AST: 7 * 8>}
+			Match{'last': <ast.AST: 7 * 8>}
 		"""
 		match=pattern_match(self._pattern, text)
 		if match is None: return None
-		return Matching(match)
+		return Match(match)
 
-	def finditer(self, text: ast.AST)->Iterator[Matching]:
+	def finditer(self, text: ast.AST)->Iterator[Match]:
 		"""
 		Find all matching occurrences.
 
 		Example::
 
 			>>> [*compile(expr("_a*_b")).finditer(expr("1*2+3*4"))]
-			[Matching{'a': <ast.AST: 1>, 'b': <ast.AST: 2>}, Matching{'a': <ast.AST: 3>, 'b': <ast.AST: 4>}]
+			[Match{'a': <ast.AST: 1>, 'b': <ast.AST: 2>}, Match{'a': <ast.AST: 3>, 'b': <ast.AST: 4>}]
 		"""
 		if isinstance(text, list):
 			for item in text:
@@ -204,19 +217,19 @@ class Pattern:
 		else:
 			assert False, (self, text)
 
-	def sub(self, replace: Union[ast.AST, Repl, Callable[[ast.AST, Matching], ast.AST]], text: ast.AST)->ast.AST:
+	def sub(self, replace: Union[ast.AST, Repl, Callable[[ast.AST, Match], ast.AST]], text: ast.AST)->ast.AST:
 		"""
 		Replace all occurrences.
 
 		Parameters like ``count`` or functionalities like ``re.subn`` is not supported.
 
-		The *replace* parameter can be an AST, a pattern, or a function that takes the whole match and a :class:`Matching` object and returns an AST.
+		The *replace* parameter can be an AST, a pattern, or a function that takes the whole match and a :class:`Match` object and returns an AST.
 
 		Example::
 
 			>>> pp(compile(expr("1")).sub(expr("2"), expr("1+5+7+1")))
 			<ast.AST: 2 + 5 + 7 + 2>
-			>>> pp(compile(expr("1")).sub(lambda whole, _matching: Matching(x=whole).expand(repl(expr("f(_x)"))), expr("1+5+7+1")))
+			>>> pp(compile(expr("1")).sub(lambda whole, _matching: Match(x=whole).expand(repl(expr("f(_x)"))), expr("1+5+7+1")))
 			<ast.AST: f(1) + 5 + 7 + f(1)>
 			>>> pp(compile(expr("_x*_y")).sub(repl(expr("_y*_x")), expr("2*3+4*5")))
 			<ast.AST: 3 * 2 + 5 * 4>
@@ -271,23 +284,23 @@ def compile(node: ast.AST)->Pattern:
 	While a ``Blank`` can only match one item::
 
 		>>> compile(expr("f(_a)")).fullmatch(expr("f(1)"))
-		Matching{'a': <ast.AST: 1>}
+		Match{'a': <ast.AST: 1>}
 		>>> compile(expr("f(_a)")).fullmatch(expr("f(1, 2)"))
 
 	A ``BlankNullSequence`` can match zero or more items::
 
 		>>> compile(expr("f(__a)")).fullmatch(expr("f(1)"))
-		Matching{'a': [<ast.AST: 1>]}
+		Match{'a': [<ast.AST: 1>]}
 		>>> compile(expr("f(__a)")).fullmatch(expr("f()"))
-		Matching{'a': []}
+		Match{'a': []}
 		>>> compile(expr("f(__a)")).fullmatch(expr("f(1, 2)"))
-		Matching{'a': [<ast.AST: 1>, <ast.AST: 2>]}
+		Match{'a': [<ast.AST: 1>, <ast.AST: 2>]}
 
 	Similarly:
 
 		>>> compile(stmt("for i in range(10): _a")).fullmatch(stmt("for i in range(10): 1; 2"))
 		>>> compile(stmt("for i in range(10): __a")).fullmatch(stmt("for i in range(10): 1; 2"))
-		Matching{'a': [<ast.AST: 1>, <ast.AST: 2>]}
+		Match{'a': [<ast.AST: 1>, <ast.AST: 2>]}
 	"""
 	node=deepcopy(node)
 	return Pattern(_privateconstructonly, to_pattern_mutable(node))
