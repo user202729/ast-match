@@ -18,7 +18,7 @@ sphinx-autobuild . /tmp/_build/ --watch ..
 To create a tag
 
 ```
-git tag 0.3.0
+git tag 0.1.0
 git push --tags
 ```
 
