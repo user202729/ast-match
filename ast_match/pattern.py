@@ -3,6 +3,8 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import ast
+from typing import Optional, Any
+import copy
 
 @dataclass(frozen=True)
 class Blank:
@@ -11,18 +13,63 @@ class Blank:
 	"""
 	var: str
 
-def name_represent_blank(node: ast.AST)->bool:
-	return isinstance(node, ast.Name) and node.id.startswith("_")
+@dataclass(frozen=True)
+class BlankNullSequence:
+	var: str
 
-def blank_from_name(node: ast.AST)->Blank:
-	assert name_represent_blank(node)
-	assert isinstance(node, ast.Name)
-	return Blank(node.id[1:])
-def ast_is_leaf(pattern: Pattern0)->bool:
-	return (
-				isinstance(pattern, (str, int, float,
-					)) or pattern is None # ast.For.type_comment
-				)
+def name_to_blank_or_verbatim_mut(node: ast.AST)->Optional[Blank|BlankNullSequence|ast.AST]:
+	"""
+	Convert a name node to a blank-like node. Also detect names that represent "verbatim".
+
+	Example::
+
+		>>> name_to_blank_or_verbatim_mut(ast.Name(id='x'))
+		>>> name_to_blank_or_verbatim_mut(ast.Name(id='_x'))
+		Blank(var='x')
+		>>> name_to_blank_or_verbatim_mut(ast.Name(id='__x'))
+		BlankNullSequence(var='x')
+
+	It's possible to specify "verbatim"::
+
+		>>> ast.dump(name_to_blank_or_verbatim_mut(ast.Name(id='_v_x')))
+		"Name(id='_x')"
+	"""
+	if not isinstance(node, ast.Name): return None
+	s: str=node.id
+	if s.startswith('_'):
+		if s.startswith('__'):
+			return BlankNullSequence(var=s[2:])
+		elif s.startswith('_v_'):
+			node.id=s[2:]
+			return node
+		else:
+			return Blank(var=s[1:])
+	else:
+		return None
+
+def node_to_blank_or_verbatim_mut(node: ast.AST)->Optional[Blank|BlankNullSequence|ast.AST]:
+	"""
+	Same as :func:`name_to_blank_or_verbatim_mut`, but also handle Expr(value=Name(id=...)) nodes::
+
+		>>> node_to_blank_or_verbatim_mut(ast.Name(id='_x'))
+		Blank(var='x')
+		>>> node_to_blank_or_verbatim_mut(ast.Expr(ast.Name(id='_x')))
+		Blank(var='x')
+		>>> ast.dump(node_to_blank_or_verbatim_mut(ast.Name(id='_v_x')))
+		"Name(id='_x')"
+		>>> ast.dump(node_to_blank_or_verbatim_mut(ast.Expr(ast.Name(id='_v_x'))))
+		"Expr(value=Name(id='_x'))"
+	"""
+	tmp=name_to_blank_or_verbatim_mut(node)
+	if tmp is not None: return tmp
+	if isinstance(node, ast.Expr):
+		tmp=name_to_blank_or_verbatim_mut(node.value)
+		if tmp is not None:
+			if isinstance(tmp, ast.AST):
+				node.value=tmp
+				return node
+			return tmp
+	return None
 
 def scan_node_to_pattern(node: ast.AST)->None:
 	"""
@@ -30,33 +77,30 @@ def scan_node_to_pattern(node: ast.AST)->None:
 	"""
 	assert isinstance(node, ast.AST), node
 
-	# special case: body node
-	if (
-			hasattr(node, "body") and
-			len(node.body)==1 and isinstance(node.body[0], ast.Expr) and  # type: ignore
-			name_represent_blank(node.body[0].value)  # type: ignore
-			):
-		node.body=blank_from_name(node.body[0].value)  # type: ignore
-
-	# normal node
 	for field_name, child in ast.iter_fields(node):
-		if name_represent_blank(child):
-			assert getattr(node, field_name) is child
-			setattr(node, field_name, blank_from_name(child))
-
-		elif isinstance(child, list):
+		if isinstance(child, list):
 			for i, x in enumerate(child):
-				if name_represent_blank(x):
-					child[i]=blank_from_name(x)
+				tmp=node_to_blank_or_verbatim_mut(x)
+				if tmp is not None:
+					child[i]=tmp
 				else:
 					scan_node_to_pattern(x)
 
-		elif isinstance(child, ast.AST): scan_node_to_pattern(child)
+			if len(child)==1 and isinstance(child[0], BlankNullSequence):
+				setattr(node, field_name, child[0])
+
+			elif any(isinstance(x, BlankNullSequence) for x in child):
+				raise NotImplementedError(f"BlankNullSequence together with another item is not implemented -- {child=}")
+
+		elif isinstance(child, ast.AST):
+			tmp=node_to_blank_or_verbatim_mut(child)
+			if tmp is not None:
+				setattr(node, field_name, tmp)
+			else:
+				scan_node_to_pattern(child)
 
 		else:
-			assert (
-					ast_is_leaf(child) or isinstance(child, Blank) # converted in the body case above
-					), (child, node)
+			pass
 
 Pattern0=ast.AST
 
@@ -74,8 +118,10 @@ def merge_matching(a: Optional[Matching0], b: Optional[Matching0])->Optional[Mat
 		a[key]=value
 	return a
 
-def pattern_match(pattern: Pattern0, tree: ast.AST)->Optional[Matching0]:
-	if isinstance(pattern, Blank):
+def pattern_match(pattern: Pattern0|list, tree: ast.AST|list)->Optional[Matching0]:
+	if isinstance(pattern, Blank) or isinstance(pattern, BlankNullSequence):
+		if isinstance(pattern, Blank): assert not isinstance(tree, list)
+		elif isinstance(pattern, BlankNullSequence): assert isinstance(tree, list)
 		return {pattern.var: tree}
 	if type(pattern)!=type(tree): return None
 
@@ -94,20 +140,23 @@ def pattern_match(pattern: Pattern0, tree: ast.AST)->Optional[Matching0]:
 			if result is None: return None
 
 	else:
-		assert ast_is_leaf(pattern), (pattern, tree)
 		if pattern!=tree: return None
 
 	return result
 
 
-def pattern_replace_mutable(pattern: Pattern0, replacement: Matching0)->ast.AST:
+def pattern_replace_mutable(pattern: Any, replacement: Matching0)->Any:
 	"""
 	might or might not modify the input pattern.
 	The result is *returned*. don't rely on the input pattern being changed to the correct output.
 
 	note. For convenience, result might not be ast.AST if the input is not
 	"""
-	if isinstance(pattern, Blank): return replacement[pattern.var]
+	if isinstance(pattern, Blank) or isinstance(pattern, BlankNullSequence):
+		result=replacement[pattern.var]
+		if isinstance(pattern, Blank): assert not isinstance(result, list)
+		elif isinstance(pattern, BlankNullSequence): assert isinstance(result, list)
+		return result
 
 	elif isinstance(pattern, list):
 		return [pattern_replace_mutable(item, replacement) for item in pattern]  # type: ignore
@@ -118,5 +167,4 @@ def pattern_replace_mutable(pattern: Pattern0, replacement: Matching0)->ast.AST:
 		return pattern
 
 	else:
-		assert ast_is_leaf(pattern), pattern
 		return pattern

@@ -207,3 +207,5 @@ Module(
       orelse=[])],
   type_ignores=[])
 ```
+
+It may also be desirable to put the code into `.ipython/profile_default/startup/` or similar so that it's run automatically when IPython starts.

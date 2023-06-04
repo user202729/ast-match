@@ -5,7 +5,6 @@ Main module.
 from __future__ import annotations
 
 import ast
-from ast_match.parse import parse_statement, parse_expr
 from ast_match.pattern import *
 from copy import deepcopy
 from typing import Union, Iterator, Callable, Optional
@@ -36,11 +35,11 @@ def expr(code: str)->ast.expr:
 			...
 		AssertionError
 	"""
-	statement=parse_statement(code)
+	statement=stmt(code)
 	assert isinstance(statement, ast.Expr)
 	return statement.value
 
-def prettyrepr(o: ast.AST)->str:
+def prettyrepr(o: ast.AST|list)->str:
 	"""
 	Pretty print an ``ast.AST`` object. Return a string.
 	The output should not be considered stable.
@@ -50,6 +49,8 @@ def prettyrepr(o: ast.AST)->str:
 		>>> prettyrepr(stmt('a=1'))
 		'<ast.AST: a = 1>'
 	"""
+	if isinstance(o, list):
+		return "[" + ", ".join(prettyrepr(x) for x in o) + "]"
 	try: return "<ast.AST: " + ast.unparse(o) + ">"
 	except: return "<ast.AST: " + ast.dump(o, indent=2) + ">"
 
@@ -262,6 +263,31 @@ def compile(node: ast.AST)->Pattern:
 		  value=Constant(value=1))>
 		>>> compile(expr('_a+_b'))
 		<Pattern: BinOp(left=Blank(var='a'), op=Add(), right=Blank(var='b'))>
+
+	A variable prefixed with ``_`` denotes a "blank" i.e. placeholder.
+	The concept of ``Blank`` comes from Mathematica.
+
+	Similarly there's a ``BlankNullSequence``.
+	While a ``Blank`` can only match one item::
+
+		>>> compile(expr("f(_a)")).fullmatch(expr("f(1)"))
+		Matching{'a': <ast.AST: 1>}
+		>>> compile(expr("f(_a)")).fullmatch(expr("f(1, 2)"))
+
+	A ``BlankNullSequence`` can match zero or more items::
+
+		>>> compile(expr("f(__a)")).fullmatch(expr("f(1)"))
+		Matching{'a': [<ast.AST: 1>]}
+		>>> compile(expr("f(__a)")).fullmatch(expr("f()"))
+		Matching{'a': []}
+		>>> compile(expr("f(__a)")).fullmatch(expr("f(1, 2)"))
+		Matching{'a': [<ast.AST: 1>, <ast.AST: 2>]}
+
+	Similarly:
+
+		>>> compile(stmt("for i in range(10): _a")).fullmatch(stmt("for i in range(10): 1; 2"))
+		>>> compile(stmt("for i in range(10): __a")).fullmatch(stmt("for i in range(10): 1; 2"))
+		Matching{'a': [<ast.AST: 1>, <ast.AST: 2>]}
 	"""
 	node=deepcopy(node)
 	return Pattern(_privateconstructonly, to_pattern_mutable(node))
