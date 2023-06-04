@@ -124,7 +124,42 @@ Matching{'last': <ast.AST: 7 * 8>}
 
 The code inside strings may not be syntax-highlighted as Python code.
 
-TODO how to fix?
+To fix, consider adding the following to `.vim/after/syntax/python.vim`:
+
+```vim
+syn region  pythonSpecialInclude1
+			\ start=+\(expr\|stmt\)(r\?\z(['"]\)+ end=+\z1)+ keepend
+			\ contains=pythonSpecialIncludeInner1
+
+syn region  pythonSpecialIncludeInner1
+			\ start=+\z(['"]\)\zs+ end=+\ze\z1+ keepend
+			\ contained contains=TOP
+```
+
+You may want to test on some Python code as follows (the part inside `expr` should be highlighted as Python code instead of string)
+
+```python
+expr("lambda x: 1")
+expr(r"lambda x: 1")
+expr("""
+for i in range(5):
+	pass
+""")
+expr(r"""
+for i in range(5):
+	pass
+""")
+expr('lambda x: 1')
+stmt('for i in range(5): pass')
+```
+
+For functions other than `expr` or `stmt` it should still be highlighted as string:
+
+```python
+f('for i in range(5): pass')
+f(r'for i in range(5): pass')
+```
+
 
 ### Note for IPython users
 
