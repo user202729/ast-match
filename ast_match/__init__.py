@@ -10,9 +10,11 @@ Refer to :func:`compile`.
 from __future__ import annotations
 
 import ast
+import typing
 from ast_match._pattern import *
 from copy import deepcopy
-from typing import Union, Iterator, Callable, Optional
+from typing import Union, Iterator, Callable, Optional, Literal
+import builtins
 
 def stmt(code: str)->ast.stmt:
 	r"""
@@ -232,31 +234,36 @@ class Pattern:
 		return Match(match)
 
 	def finditer(self, text: ast.AST)->Iterator[Match]:
-		"""
+		r"""
 		Find all matching occurrences.
 
 		Example::
 
 			>>> [*compile(expr("_a*_b")).finditer(expr("1*2+3*4"))]
 			[Match{'a': <ast.AST: 1>, 'b': <ast.AST: 2>}, Match{'a': <ast.AST: 3>, 'b': <ast.AST: 4>}]
+			>>> [*compile(expr("_a*_b")).finditer(ast.parse("print(1*2);\nif True: print(3*4)"))]
+			[Match{'a': <ast.AST: 1>, 'b': <ast.AST: 2>}, Match{'a': <ast.AST: 3>, 'b': <ast.AST: 4>}]
 		"""
-		if isinstance(text, list):
-			for item in text:
-				yield from self.finditer(item)
+		assert isinstance(text, ast.AST), text
 
-		elif isinstance(text, ast.AST):
-			# check top level match
-			matching=self.fullmatch(text)
-			if matching is not None:
-				yield matching
+		# check top level match
+		matching=self.fullmatch(text)
+		if matching is not None:
+			yield matching
 
-			# check children
-			for field_name, text0 in ast.iter_fields(text):
-				if isinstance(text0, ast.AST):  # TODO what if text0 is list?
-					yield from self.finditer(text0)
+		# check children
+		for field_name, text0 in ast.iter_fields(text):
+			if isinstance(text0, list):
+				for item in text0:
+					assert not isinstance(item, list)
+					if isinstance(item, ast.AST):
+						yield from self.finditer(item)
 
-		else:
-			assert False, (self, text)
+			elif isinstance(text0, ast.AST):
+				yield from self.finditer(text0)
+
+			else:
+				pass  # leaf node
 
 	def sub(self, replace: Union[ast.AST, Repl, Callable[[ast.AST, Match], ast.AST]], text: ast.AST)->ast.AST:
 		"""
@@ -350,3 +357,29 @@ def compile(node: ast.AST)->Pattern:
 	node=deepcopy(node)
 	return Pattern(_privateconstructonly, to_pattern_mutable(node))
 
+def compile_eval_ast(o: ast.AST|list, filename: str="eval_ast"):
+	"""
+	Compile an ``expr``-like object to be used with ``eval()``. Does various fixes automatically.
+
+	Note that this function does not ``eval`` the resulting object directly because ``eval`` depends on the
+	parent context -- so it's recommended to just write ``eval(compile_eval_ast(...))`` directly.
+	Plus it might be useful to use the compiled object without evaluating the directly.
+	"""
+	if isinstance(o, list): o=ast.List(o, ctx=ast.Load())
+	if isinstance(o, ast.expr): o=ast.Expression(o)
+	assert isinstance(o, ast.Expression), o
+	o=ast.fix_missing_locations(o)
+	return builtins.compile(o, filename, "eval")
+
+def compile_exec_ast(o: ast.AST|list, filename: str="exec_ast"):
+	"""
+	Compile an ``stmt``-like object to be used with ``exec``.
+
+	.. seealso:: :func:`compile_eval_ast`
+	"""
+	if isinstance(o, ast.expr): o=ast.Expr(o)
+	if isinstance(o, ast.stmt): o=[o]
+	if isinstance(o, list): o=ast.Module(o, type_ignores=[])
+	assert isinstance(o, ast.Module), o
+	o=ast.fix_missing_locations(o)
+	return builtins.compile(o, filename, "exec")

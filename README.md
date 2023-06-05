@@ -13,6 +13,8 @@ it will save you lots of time later on.
 
 This module does not allow you to manipulate the tree in *all possible* ways. For that you still need to tinker with the AST itself.
 
+Some behaviors might be unexpected: for example, the pattern `f(__l)` will match `f(1, 2)` as expected, but it will not match `f(a=1)`.
+
 ### Related packages
 
 https://greentreesnakes.readthedocs.io/en/latest/examples.html#real-projects
@@ -130,6 +132,14 @@ Match{'last': <ast.AST: 7 * 8>}
 </td>
 </tr>
 </table>
+
+
+### Remark
+
+In order to execute an `ast.AST`-like object,
+you can use the built-in `compile()` function like `compile(ast.Expression(t), "filename", "eval")`.
+
+There are also some helper functions such as `compile_exec_ast`.
 
 ### Note for Vim users
 
