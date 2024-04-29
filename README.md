@@ -1,5 +1,14 @@
 # ast-match
 
+## **Note**: This library is unmaintained.
+
+A few other interesting libraries:
+* https://pypi.org/project/meta/
+* https://libcst.readthedocs.io/en/latest/
+* https://stackoverflow.com/q/768634/5267751 and links within
+
+------
+
 A library to facilitate easier manipulation of Python AST (abstract syntax tree) objects.
 
 This library allows you to write the syntax in an intuitive way, instead of having to write the names of the internal classes in `ast` module.
