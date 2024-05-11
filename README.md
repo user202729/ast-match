@@ -6,6 +6,8 @@ A few other interesting libraries:
 * https://pypi.org/project/meta/
 * https://libcst.readthedocs.io/en/latest/
 * https://stackoverflow.com/q/768634/5267751 and links within
+* https://greentreesnakes.readthedocs.io/en/latest/examples.html#real-projects
+* https://github.com/tcmulcahy/macropy
 
 ------
 
@@ -23,10 +25,6 @@ it will save you lots of time later on.
 This module does not allow you to manipulate the tree in *all possible* ways. For that you still need to tinker with the AST itself.
 
 Some behaviors might be unexpected: for example, the pattern `f(__l)` will match `f(1, 2)` as expected, but it will not match `f(a=1)`.
-
-### Related packages
-
-https://greentreesnakes.readthedocs.io/en/latest/examples.html#real-projects
 
 ### Usage
 
