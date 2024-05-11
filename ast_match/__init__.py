@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import ast
 import typing
-from ast_match._pattern import *
+from dataclasses import dataclass
+from ast_match._pattern import to_pattern_mutable, pattern_match, pattern_replace_mutable, Pattern0, Matching0
 from copy import deepcopy
 from typing import Union, Iterator, Callable, Optional, Literal
 import builtins
@@ -149,7 +150,7 @@ class Match:
 	"""
 	_matching: Matching0
 
-	def __init__(self, *args, **kwargs):
+	def __init__(self, *args: dict[str, ast.AST], **kwargs: ast.AST)->None:
 		"""
 		Constructor. Example::
 
@@ -165,7 +166,7 @@ class Match:
 			assert not args
 			self._matching=dict(**kwargs)
 
-	def __repr__(self):
+	def __repr__(self)->str:
 		"""
 		>>> Match({"a": expr("1")})
 		Match{'a': <ast.AST: 1>}
@@ -357,7 +358,7 @@ def compile(node: ast.AST)->Pattern:
 	node=deepcopy(node)
 	return Pattern(_privateconstructonly, to_pattern_mutable(node))
 
-def compile_eval_ast(o: ast.AST|list, filename: str="eval_ast"):
+def compile_eval_ast(o: ast.AST|list, filename: str="eval_ast")->typing.Any:
 	"""
 	Compile an ``expr``-like object to be used with ``eval()``. Does various fixes automatically.
 
@@ -371,7 +372,7 @@ def compile_eval_ast(o: ast.AST|list, filename: str="eval_ast"):
 	o=ast.fix_missing_locations(o)
 	return builtins.compile(o, filename, "eval")
 
-def compile_exec_ast(o: ast.AST|list, filename: str="exec_ast"):
+def compile_exec_ast(o: ast.AST|list, filename: str="exec_ast")->typing.Any:
 	"""
 	Compile an ``stmt``-like object to be used with ``exec``.
 

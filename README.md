@@ -164,7 +164,7 @@ syn region  pythonSpecialIncludeInner1
 			\ contained contains=TOP
 ```
 
-You may want to test on some Python code as follows (the part inside `expr` should be highlighted as Python code instead of string)
+Here are some Python code for you to test it out, view this `README.md` file in vim. (The part inside `expr` should be highlighted as Python code instead of string.)
 
 ```python
 expr("lambda x: 1")
